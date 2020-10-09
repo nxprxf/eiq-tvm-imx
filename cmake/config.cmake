@@ -218,6 +218,9 @@ set(USE_ETHOSN OFF)
 # otherwise use ETHOSN_HW (OFF) to use the software test infrastructure
 set(USE_ETHOSN_HW OFF)
 
+# Whether to build with vsi-npu support
+set(USE_VSI_NPU OFF)
+
 # Build ANTLR parser for Relay text format
 # Possible values:
 # - ON: enable ANTLR by searching default locations (cmake find_program for antlr4 and /usr/local for jar)
