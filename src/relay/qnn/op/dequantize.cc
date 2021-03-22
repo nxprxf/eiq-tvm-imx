@@ -136,7 +136,8 @@ The input is always quantized (int8, uint8) and will be converted to float32 giv
     .add_argument("input_zero_point", "Tensor", "The quantization zero_point of the input tensor.")
     .set_support_level(11)
     .add_type_rel("Dequantize", DequantizeRel)
-    .set_attr<FTVMLegalize>("FTVMQnnCanonicalize", DequantizeQnnCanonicalize);
+    .set_attr<FTVMLegalize>("FTVMQnnCanonicalize", DequantizeQnnCanonicalize)
+    .set_attr<TOpIsStateful>("TOpIsStateful", true);
 
 TVM_REGISTER_GLOBAL("relay.qnn.op._make.dequantize").set_body_typed(MakeDequantize);
 
