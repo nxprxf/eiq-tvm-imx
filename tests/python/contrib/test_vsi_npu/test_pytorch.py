@@ -1,3 +1,20 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
 import torch
 import torchvision
 from torchvision import transforms
@@ -134,7 +151,6 @@ class TORCH_Model:
         self.inputs = inputs
         self.input_size = input_size
         self.is_quant = is_quant
-        
 
 models = [        
           "mobilenet_v2",
@@ -145,7 +161,6 @@ models = [
           "resnet152",
           "inception_v3",
           "alexnet",
-          "googlenet",
           "densenet121",
           "densenet161",
           "densenet169",
@@ -153,21 +168,9 @@ models = [
           "squeezenet1_0",
           "squeezenet1_1",
           "mnasnet0_5",
-          "mnasnet0_75",
           "mnasnet1_0",
-          "mnasnet1_3",
-          "vgg11"
-          "vgg11_bn"
-          "vgg13"
-          "vgg13_bn"
-          "vgg16"
-          "vgg16_bn"
-          "vgg19"
-          "vgg19_bn"
           "shufflenet_v2_x0_5",
           "shufflenet_v2_x1_0",
-          "shufflenet_v2_x1_5",
-          "shufflenet_v2_x2_0",
          ]
 
 SUPPORTED_MODELS = {}
