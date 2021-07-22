@@ -27,17 +27,20 @@ from tvm.contrib import graph_runtime
 from PIL import Image
 from tflite_models import *
 
+
 # Customize the image data for pytorch processing
 def myprocess(image):
     p = transforms.Compose(
-    [
+      [
         transforms.Resize(256),
         transforms.CenterCrop(224),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ])
+        transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                             std=[0.229, 0.224, 0.225]),
+      ])
 
     return p(image)
+
 
 # Download pytorch models
 def get_pytorch_model(model_name):
@@ -45,6 +48,7 @@ def get_pytorch_model(model_name):
     model = model.eval()
 
     return model
+
 
 # Download the picture to be tested as input
 def get_img_data(shape, is_quant=False, myprocess=None):
@@ -74,75 +78,37 @@ def get_img_data(shape, is_quant=False, myprocess=None):
 
     return image_data
 
-# Compile the model
-def compile_pytorch_model(shape, model_name, verbose=False, lib_path="./model.so"):
-    m = SUPPORTED_MODELS[model_name]
 
-    model = get_pytorch_model(model_name)
+def load_pytorch_model(model_name):
+    # cannot decode model to get input_shape easily
+    shape = (1, 3, 224, 224)
+    model = getattr(torchvision.models, model_name)(pretrained=True)
+    model = model.eval()
+
     input_data = torch.randn(shape)
     scripted_model = torch.jit.trace(model, input_data).eval()
-    shape_list = [(m.inputs, shape)]
-    mod, params = relay.frontend.from_pytorch(
-            scripted_model, shape_list
-    )        
+    shape_list = [("input0", shape)]
 
-    kwargs = {}
-    kwargs["cc"] = "aarch64-linux-gnu-gcc"
-    target = "llvm  -mtriple=aarch64-linux-gnu"
-
-    with transform.PassContext(opt_level=3, disabled_pass=["AlterOpLayout"]):
-        mod = vsi_npu.partition_for_vsi_npu(mod, params)
-        if verbose:
-            print(mod.astext(show_meta_data=False))
-        lib = relay.build(mod, target, params=params)
-        lib.export_library(lib_path, fcompile=False, **kwargs)
+    return relay.frontend.from_pytorch(scripted_model, shape_list)
 
 
-def get_ref_result(shape, model_name, image_data):
+# Compile the model
+def compile_pytorch_model(input_shape, model_name):
+    mod, params = load_pytorch_model(model_name)
+    cross_compile_model(mod, params)
+
+
+def get_ref_result(model_name, input_data):
 
     m = SUPPORTED_MODELS[model_name]
     inputs = m.inputs
     DTYPE = "uint8" if m.is_quant else "float32"
 
-    model = get_pytorch_model(model_name)
-    input_data = torch.randn(shape)
-    scripted_model = torch.jit.trace(model, input_data).eval()
-    shape_list = [(m.inputs, shape)]
-    mod, params = relay.frontend.from_pytorch(
-            scripted_model, shape_list
-    )        
+    mod, params = load_pytorch_model(model_name)
 
-    target = "llvm"
-    with tvm.transform.PassContext(opt_level=3):
-        lib = tvm.relay.build(mod, target, params=params)
+    tvm_out = run_tvm_model(mod, params, input_data)
 
-    ctx = tvm.cpu()
-    cpu_mod = graph_runtime.GraphModule(lib["default"](ctx))
-    cpu_mod.set_input(inputs, image_data)
-
-    cpu_mod.run()
-    tvm_out = cpu_mod.get_output(0).asnumpy()
     return tvm_out
-
-
-def get_label_index():
-    label_file_url = "".join(
-        [
-        "https://raw.githubusercontent.com/",
-        "tensorflow/tensorflow/master/tensorflow/lite/java/demo/",
-        "app/src/main/assets/",
-        "labels_mobilenet_quant_v1_224.txt",
-        ]
-    )
-    label_file = "labels_mobilenet_quant_v1_224.txt"
-    label_path = download_testdata(label_file_url, label_file, module="data")
-
-    # List of 1001 classes
-    with open(label_path) as f:
-        labels = f.readlines()
-
-        # remove the first "background"
-        return labels[1:]
 
 
 class TORCH_Model:
@@ -152,7 +118,8 @@ class TORCH_Model:
         self.input_size = input_size
         self.is_quant = is_quant
 
-models = [        
+
+models = [
           "mobilenet_v2",
           "resnet18",
           "resnet34",
@@ -173,6 +140,7 @@ models = [
           "shufflenet_v2_x1_0",
          ]
 
+
 SUPPORTED_MODELS = {}
 
 for m in models:
@@ -180,7 +148,7 @@ for m in models:
     SUPPORTED_MODELS[m] = mod
 
 
-labels = get_label_index()
+labels = load_test_label()
 input_shape = [1, 3, 224, 224]
 image_data = get_img_data(input_shape[2:], myprocess=myprocess)
 
@@ -189,7 +157,7 @@ for name, m in SUPPORTED_MODELS.items():
     # We grab the TorchScripted model via tracing
     try:
         compile_pytorch_model(input_shape, m.name)
-        tvm_output = get_ref_result(input_shape, m.name, image_data)
+        tvm_output = get_ref_result(m.name, image_data)
     except Exception as err:
         print(f"FAIL ==> {name} failed with {err}")
         continue
@@ -205,5 +173,5 @@ for name, m in SUPPORTED_MODELS.items():
         # Get top-1 result for PyTorch
         top1_torch = np.argmax(output.numpy())
 
-    print("Relay top-1 id: {}, class name: {}".format(top1_tvm, labels[top1_tvm]))
-    print("Torch top-1 id: {}, class name: {}".format(top1_torch, labels[top1_torch]))
+    print(f"Relay top-1 id: {top1_tvm}, class name: {labels[top1_tvm]}")
+    print(f"Torch top-1 id: {top1_torch}, class name: {labels[top1_torch]}")

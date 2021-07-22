@@ -19,9 +19,11 @@ from PIL import Image
 import numpy as np
 import argparse
 
+import tvm
 from tvm import relay, transform
 from tvm.relay.op.contrib import vsi_npu
 from tvm.contrib.download import download_testdata
+
 from tflite_deeplab import *
 
 SUPPORTED_MODELS = {}  # name to TFModel mapping
@@ -60,14 +62,17 @@ def add_supported_model(name, where, is_quant=False, formats='tgz',
 
 def init_supported_models():
     QUANT = True
-    where = "https://storage.googleapis.com/tfhub-lite-models/tensorflow/lite-model/ssd_mobilenet_v1/1/metadata/1.tflite"
+    where = "".join(
+               ["https://storage.googleapis.com/tfhub-lite-models/tensorflow/",
+                "lite-model/ssd_mobilenet_v1/1/metadata/1.tflite"])
     m = add_supported_model("ssd_mobilenet_v1", "", QUANT, formats="tflite")
     m.url = where
     m.inputs = "normalized_input_image_tensor"
     m.input_size = 300
 
     where = "http://download.tensorflow.org/models/object_detection"
-    m = add_supported_model("ssd_mobilenet_v3", where, formats='tar.gz', suffix="_small_coco_2020_01_14")
+    m = add_supported_model("ssd_mobilenet_v3", where, formats='tar.gz',
+                            suffix="_small_coco_2020_01_14")
     m.input_size = 320
     m.is_quant = True
     m.inputs = 'normalized_input_image_tensor'
@@ -158,6 +163,7 @@ def extract(path, model_name):
 
     raise RuntimeError("Could not find tflite model file.")
 
+
 def get_tflite_model(model_name):
 
     m = SUPPORTED_MODELS[model_name]
@@ -212,7 +218,8 @@ def get_img_data(shape, is_quant):
     return image_data
 
 
-def compile_tflite_model(shape, model_name, verbose=False, lib_path="./model.so"):
+def compile_tflite_model(shape, model_name, verbose=False,
+                         lib_path="./model.so"):
     m = SUPPORTED_MODELS[model_name]
 
     DTYPE = "uint8" if m.is_quant else "float32"
@@ -234,3 +241,64 @@ def compile_tflite_model(shape, model_name, verbose=False, lib_path="./model.so"
         lib.export_library(lib_path, fcompile=False, **kwargs)
 
     return lib_path
+
+
+TEST_PIC_CAT = "".join(
+    "https://github.com/dmlc/mxnet.js/blob/main/data/cat.png?raw=true"
+)
+
+TEST_LABEL_INDEX = "".join(
+    [
+        "https://raw.githubusercontent.com/",
+        "tensorflow/tensorflow/master/tensorflow/lite/java/demo/",
+        "app/src/main/assets/",
+        "labels_mobilenet_quant_v1_224.txt",
+    ]
+)
+
+
+def load_test_image(image_url=TEST_PIC_CAT):
+    image_path = download_testdata(image_url, "cat.png", module="data")
+    img_data = Image.open(image_path).resize((224, 224))
+
+    return img_data
+
+
+def load_test_label(label_url=TEST_LABEL_INDEX):
+    label_file = "labels_1k.txt"
+    label_path = download_testdata(label_url, label_file, module="data")
+
+    # List of 1001 classes
+    with open(label_path) as f:
+        labels = f.readlines()
+
+        # remove the first "background"
+        return labels[1:]
+    raise Exception("Load label index file failed!")
+
+
+def cross_compile_model(mod, params, verbose=False, lib_path="./model.so"):
+    kwargs = {}
+    kwargs["cc"] = "aarch64-linux-gnu-gcc"
+    target = "llvm  -mtriple=aarch64-linux-gnu"
+
+    with transform.PassContext(opt_level=3, disabled_pass=["AlterOpLayout"]):
+        mod = vsi_npu.partition_for_vsi_npu(mod, params)
+        if verbose:
+            print(mod.astext(show_meta_data=False))
+        lib = relay.build(mod, target, params=params)
+        lib.export_library(lib_path, fcompile=False, **kwargs)
+
+
+def run_tvm_model(mod, params, input_data):
+    target = "llvm"
+
+    with tvm.transform.PassContext(opt_level=3):
+        intrp = relay.build_module.create_executor(
+                    "graph", mod, tvm.cpu(0), target
+                )
+        output = intrp.evaluate()(input_data, **params).asnumpy()
+
+        return output
+
+    raise Exception(f"Failed to run model {mod}")

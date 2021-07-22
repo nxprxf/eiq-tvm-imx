@@ -17,10 +17,37 @@
 import tvm
 from tvm import te
 import tvm.relay as relay
-import keras
+import tensorflow.keras as keras
 import numpy as np
 from tvm.contrib.download import download_testdata
 from PIL import Image
+from tflite_models import *
+
+
+def load_keras_model(weights_url, model_name, weights_file):
+    kera_models = {
+        "ResNet50": keras.applications.ResNet50,
+    }
+
+    if model_name not in kera_models:
+        raise Exception(f"not supported kera model: {model_name}")
+
+    model_path = download_testdata(weights_url, weights_file, module="keras")
+    model = kera_models[model_name](
+                 include_top=True, weights=None, input_shape=(224, 224, 3),
+                 classes=1000
+             )
+    model.load_weights(model_path)
+
+    # get the HWC value from picture
+    _, h, w, c = model.input_shape
+    input_name = model.input_names[0]
+
+    shape_dict = {input_name: (1, c, h, w)}
+
+    # the shape needs to be NCHW
+    return relay.frontend.from_keras(model, shape_dict)
+
 
 if tuple(keras.__version__.split(".")) < ("2", "4", "0"):
     weights_url = "".join(
@@ -39,31 +66,14 @@ else:
     )
     weights_file = "resnet50_keras_new.h5"
 
+mod, params = load_keras_model(weights_url, "ResNet50", weights_file)
 
-weights_path = download_testdata(weights_url, weights_file, module="keras")
-keras_resnet50 = keras.applications.ResNet50(
-    include_top=True, weights=None, input_shape=(224, 224, 3), classes=1000
-)
-keras_resnet50.load_weights(weights_path)
-
-img_url = "https://github.com/dmlc/mxnet.js/blob/main/data/cat.png?raw=true"
-img_path = download_testdata(img_url, "cat.png", module="data")
-img = Image.open(img_path).resize((224, 224))
-
-input_name = "input_1"
+img = load_test_image()
 data = np.array(img)[np.newaxis, :].astype("float32")
-data = preprocess_input(data).transpose([0, 3, 1, 2])
-shape_dict = {input_name: data.shape}
-print(shape_dict)
+data = keras.applications.resnet50.preprocess_input(data)
+data = data.transpose([0, 3, 1, 2])
 
-mod, params = relay.frontend.from_keras(keras_resnet50, shape_dict)
+tvm_out = run_tvm_model(mod, params, data)
 
-target = "llvm"
-with tvm.transform.PassContext(opt_level=3):
-    executor = relay.build_module.create_executor("graph", mod, tvm.cpu(0), target)
-
-dtype = "float32"
-tvm_output = executor.evaluate()(tvm.nd.array(data.astype(dtype)), **params).asnumpy()
-
-top1_tvm = np.argmax(tvm_outout.numpy()[0])
+top1_tvm = np.argmax(tvm_out[0])
 print(top1_tvm)
