@@ -575,8 +575,8 @@ class VsiNpuJSONRuntime : public JSONRuntimeBase {
     auto vsi_input = MakeVSITensorFromJSONEntry(inputs[0]);
     auto vsi_output = MakeVSITensorFromJSONEntry(out_entry, vsi_input->GetQuantization());
 
-    auto pool = graph_->CreateOperation<tim::vx::ops::Pool2d>(pool_type, tim::vx::PadType::AUTO,
-                                                         vsi_ksize, vsi_stride, vsi_pad, round_type);
+    auto pool = graph_->CreateOperation<tim::vx::ops::Pool2d>(pool_type, vsi_pad,
+                                                         vsi_ksize, vsi_stride, round_type);
     (*pool).BindInput(vsi_input).BindOutput(vsi_output);
     ops_.push_back(pool);
   }
@@ -610,9 +610,8 @@ class VsiNpuJSONRuntime : public JSONRuntimeBase {
     std::array<uint32_t, 2> ksize = {vsi_shap[0], vsi_shap[1]};
     //stride
     std::array<uint32_t, 2> stride = {1, 1};
-    std::array<uint32_t, 4> pad = {0, 0, 0, 0};
 
-    auto _op = graph_->CreateOperation<tim::vx::ops::Pool2d>(pool_type, tim::vx::PadType::AUTO, ksize, stride, pad);
+    auto _op = graph_->CreateOperation<tim::vx::ops::Pool2d>(pool_type, tim::vx::PadType::AUTO, ksize, stride);
     (*_op).BindInput(vsi_input).BindOutput(vsi_output);
     ops_.push_back(_op);
   }
@@ -731,19 +730,11 @@ class VsiNpuJSONRuntime : public JSONRuntimeBase {
     size_t num_inputs = inputs.size();
     JSONGraphNodeEntry out_entry(nid, 0);
     bool has_bias;
-    int32_t vsi_multiplier = 0;
     std::vector<int64_t> data_shape = nodes_[inputs[0].id_].GetOpShape()[0];
     std::vector<int64_t> weight_shape = nodes_[inputs[1].id_].GetOpShape()[0];
     std::vector<int64_t> bias_shape = {channels};
+    bool is_depthwise_conv = (groups == channels);
 
-    if (groups == data_shape[1] && groups == weight_shape[0] && groups != 1) {
-      vsi_multiplier = static_cast<int32_t>(weight_shape[1]);
-      if (channels != vsi_multiplier) {
-          CHECK(channels == weight_shape[0] * weight_shape[1]) << "Invalid channels for depthwise conv2d.";
-	  weight_shape[0] = 1;
-	  weight_shape[1] = channels;
-      }
-    }
 
     if (node.GetOpName() == "qnn.conv2d") {
       CHECK(num_inputs >= 10U && num_inputs <= 11U)
@@ -792,9 +783,10 @@ class VsiNpuJSONRuntime : public JSONRuntimeBase {
 			      {weight_tensor->GetShape()[3]}));
     }
 
-    auto conv = graph_->CreateOperation<tim::vx::ops::Conv2d>(channels,
+    int32_t arrt_weights = is_depthwise_conv ? weight_tensor->GetShape()[2] : weight_tensor->GetShape()[3];
+    auto conv = graph_->CreateOperation<tim::vx::ops::Conv2d>(arrt_weights,
 		    tim::vx::PadType::AUTO, vsi_ksize, vsi_strides, vsi_dilation,
-		    vsi_pad, groups, vsi_multiplier);
+		    vsi_pad, is_depthwise_conv ? 1 : 0);
     (*conv).BindInputs(vsi_inputs).BindOutputs(vsi_outputs);
     ops_.push_back(conv);
   }
