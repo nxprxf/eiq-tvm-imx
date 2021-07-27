@@ -102,7 +102,7 @@ def init_supported_models():
 
     where = "https://storage.googleapis.com/download.tensorflow.org/models"
     add_supported_model("inception_v1_224", where, QUANT, suffix="_20181026")
-    add_supported_model("inception_v2_224", where, QUANT, suffix="_20181026")
+    #add_supported_model("inception_v2_224", where, QUANT, suffix="_20181026")
     add_supported_model("inception_v4_299", where, QUANT, suffix="_20181026")
 
     where = "https://storage.googleapis.com/download.tensorflow.org/"
