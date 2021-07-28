@@ -20,12 +20,41 @@ import torchvision
 from torchvision import transforms
 import numpy as np
 import tvm
+from tvm import rpc
+from tvm.contrib import graph_runtime
 from tvm import te
 import tvm.relay as relay
 from tvm.contrib.download import download_testdata
 from tvm.contrib import graph_runtime
 from PIL import Image
 from tflite_models import *
+
+
+RPC_HOST = "10.193.21.234"
+RPC_PORT = 9090
+MEASURE_PERF = False
+def inference_remotely(tfmodel, lib_path, image_data):
+    remote = rpc.connect(RPC_HOST, RPC_PORT)
+    remote.upload(lib_path)
+    lib = remote.load_module(os.path.basename(lib_path))
+    ctx = remote.cpu()
+
+    # Create a runtime executor module
+    module = graph_runtime.GraphModule(lib["default"](ctx))
+    # Feed input data
+    module.set_input("input0", tvm.nd.array(image_data))
+
+    if MEASURE_PERF:
+        print("Evaluate graph runtime inference cost on VSI NPU")
+        ftimer = module.module.time_evaluator("run", ctx, number=1, repeat=10)
+        # Measure in millisecond.
+        prof_res = np.array(ftimer().results) * 1000
+        print("VSI NPU runtime inference time (std dev): %.2f ms (%.2f ms)"
+              % (np.mean(prof_res), np.std(prof_res)))
+    module.run()
+    tvm_output = module.get_output(0).asnumpy()
+
+    return tvm_output
 
 
 # Customize the image data for pytorch processing
@@ -97,6 +126,8 @@ def compile_pytorch_model(input_shape, model_name):
     mod, params = load_pytorch_model(model_name)
     cross_compile_model(mod, params)
 
+    return mod, params
+
 
 def get_ref_result(model_name, input_data):
 
@@ -156,7 +187,7 @@ for name, m in SUPPORTED_MODELS.items():
     print(f"\n========== Testing {name} ==========")
     # We grab the TorchScripted model via tracing
     try:
-        compile_pytorch_model(input_shape, m.name)
+        mod, params = compile_pytorch_model(input_shape, m.name)
         tvm_output = get_ref_result(m.name, image_data)
     except Exception as err:
         print(f"FAIL ==> {name} failed with {err}")
@@ -173,5 +204,10 @@ for name, m in SUPPORTED_MODELS.items():
         # Get top-1 result for PyTorch
         top1_torch = np.argmax(output.numpy())
 
+    LIB_PATH = "./model.so"
+    vsi_out = inference_remotely(mod, LIB_PATH, image_data)
+    top1_vsi = np.argmax(vsi_out)
+
+    print(f"Relay top-1 id: {top1_vsi}, class name: {labels[top1_vsi]}")
     print(f"Relay top-1 id: {top1_tvm}, class name: {labels[top1_tvm]}")
     print(f"Torch top-1 id: {top1_torch}, class name: {labels[top1_torch]}")

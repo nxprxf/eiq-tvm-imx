@@ -20,10 +20,38 @@ import onnxruntime as rt
 import numpy as np
 import tvm
 from tvm import te
+from tvm import rpc
+from tvm.contrib import graph_runtime
 import tvm.relay as relay
 from tvm.contrib.download import download_testdata
 from PIL import Image
 from tflite_models import *
+
+RPC_HOST = "10.193.21.234"
+RPC_PORT = 9090
+MEASURE_PERF = False
+def inference_remotely(tfmodel, lib_path, image_data):
+    remote = rpc.connect(RPC_HOST, RPC_PORT)
+    remote.upload(lib_path)
+    lib = remote.load_module(os.path.basename(lib_path))
+    ctx = remote.cpu()
+
+    # Create a runtime executor module
+    module = graph_runtime.GraphModule(lib["default"](ctx))
+    # Feed input data
+    module.set_input(tfmodel.inputs, tvm.nd.array(image_data))
+
+    if MEASURE_PERF:
+        print("Evaluate graph runtime inference cost on VSI NPU")
+        ftimer = module.module.time_evaluator("run", ctx, number=1, repeat=10)
+        # Measure in millisecond.
+        prof_res = np.array(ftimer().results) * 1000
+        print("VSI NPU runtime inference time (std dev): %.2f ms (%.2f ms)"
+              % (np.mean(prof_res), np.std(prof_res)))
+    module.run()
+    tvm_output = module.get_output(0).asnumpy()
+
+    return tvm_output
 
 
 def softmax(x):
@@ -84,3 +112,8 @@ ref_output = sess.run(None, {input_name: x})[0]
 ref_output = softmax(ref_output)
 pred_onx = np.argmax(ref_output)
 print("ref out: ", pred_onx)
+
+LIB_PATH = "./model.so"
+cross_compile_model(mod, params, lib_path=LIB_PATH)
+vsi_out = inference_remotely(mod, LIB_PATH, x)
+print("vsi out: ", vsi_out)
