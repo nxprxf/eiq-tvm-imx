@@ -74,6 +74,11 @@ data = keras.applications.resnet50.preprocess_input(data)
 data = data.transpose([0, 3, 1, 2])
 
 tvm_out = run_tvm_model(mod, params, data)
-
 top1_tvm = np.argmax(tvm_out[0])
-print(top1_tvm)
+print("ref out: ", top1_tvm)
+
+LIB_PATH = "./model.so"
+cross_compile_model(mod, params, lib_path=LIB_PATH)
+vsi_out = inference_remotely(mod, LIB_PATH, data)
+print("vsi out: ", np.argmax(vsi_out))
+

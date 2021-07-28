@@ -110,10 +110,9 @@ sess = rt.InferenceSession(model_path)
 input_name = sess.get_inputs()[0].name
 ref_output = sess.run(None, {input_name: x})[0]
 ref_output = softmax(ref_output)
-pred_onx = np.argmax(ref_output)
-print("ref out: ", pred_onx)
+print("ref out: ", np.argmax(ref_output))
 
 LIB_PATH = "./model.so"
 cross_compile_model(mod, params, lib_path=LIB_PATH)
 vsi_out = inference_remotely(mod, LIB_PATH, x)
-print("vsi out: ", vsi_out)
+print("vsi out: ", np.argmax(vsi_out))
