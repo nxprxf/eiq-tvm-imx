@@ -27,10 +27,10 @@ from tvm.contrib.download import download_testdata
 from PIL import Image
 from tflite_models import *
 
-RPC_HOST = "10.193.21.234"
+RPC_HOST = "10.193.20.195"
 RPC_PORT = 9090
 MEASURE_PERF = False
-def inference_remotely(tfmodel, lib_path, image_data):
+def inference_remotely(input_name, lib_path, image_data):
     remote = rpc.connect(RPC_HOST, RPC_PORT)
     remote.upload(lib_path)
     lib = remote.load_module(os.path.basename(lib_path))
@@ -39,7 +39,7 @@ def inference_remotely(tfmodel, lib_path, image_data):
     # Create a runtime executor module
     module = graph_runtime.GraphModule(lib["default"](ctx))
     # Feed input data
-    module.set_input(tfmodel.inputs, tvm.nd.array(image_data))
+    module.set_input(input_name, tvm.nd.array(image_data))
 
     if MEASURE_PERF:
         print("Evaluate graph runtime inference cost on VSI NPU")
@@ -81,8 +81,10 @@ def load_onnx_model(model_url, model_name):
 
     input_name = onnx_model.graph.input[0].name
     dims = onnx_model.graph.input[0].type.tensor_type.shape.dim
-    shape = tuple([d.dim_value for d in dims])
+    shape = list([d.dim_value for d in dims])
+    shape[0] = 1 # set batch size to 1
     shape_dict = {input_name: shape}
+    print(shape_dict)
 
     return relay.frontend.from_onnx(onnx_model, shape_dict)
 
@@ -90,6 +92,7 @@ def load_onnx_model(model_url, model_name):
 model_url = "".join(
     [
      "https://s3.amazonaws.com/onnx-model-zoo/resnet/resnet50v1/resnet50v1.onnx"
+     #"https://media.githubusercontent.com/media/onnx/models/master/vision/classification/mobilenet/model/mobilenetv2-7.onnx"
     ]
 )
 
@@ -114,5 +117,5 @@ print("ref out: ", np.argmax(ref_output))
 
 LIB_PATH = "./model.so"
 cross_compile_model(mod, params, lib_path=LIB_PATH)
-vsi_out = inference_remotely(mod, LIB_PATH, x)
+vsi_out = inference_remotely(input_name, LIB_PATH, x)
 print("vsi out: ", np.argmax(vsi_out))

@@ -93,7 +93,7 @@ class VsiNpuJSONSerializer : public backend::contrib::JSONSerializer {
 
   /*!
    * \brief A series of operators that form a composite
-   * avg pool2d layer. Supports both qnn.avg_pool2d.
+   * avg pool2d layer. Supports qnn.avg_pool2d.
    */
   struct CompositeQnnAvgPool2DNode {
     const CallNode* pre_cast = nullptr;
@@ -101,42 +101,19 @@ class VsiNpuJSONSerializer : public backend::contrib::JSONSerializer {
     const CallNode* post_cast = nullptr;
   };
 
+  /*!
+   * \brief A series of operators that form a composite
+   * avg/max pool2d layer. Supports both nn.avg_pool2d and nn.max_pool2d.
+   */
+  struct CompositePool2DNode {
+    const CallNode* pad = nullptr;
+    const CallNode* pool2d = nullptr;
+    std::string name = "";
+  };
+
   VsiNpuJSONSerializer(const std::string& symbol, const Expr& expr) : JSONSerializer(symbol, expr) {}
 
   std::vector<JSONGraphNodeEntry> VisitExpr_(const CallNode* cn) override {
-
-#if 0
-    Expr expr = GetRef<Expr>(cn);
-    std::string name;
-    const CallNode* call = cn;
-    if (const auto* op_node = cn->op.as<OpNode>()) {
-      name = op_node->name;
-    } else if (const auto* fn = cn->op.as<FunctionNode>()) {
-      auto comp = fn->GetAttr<String>(attr::kComposite);
-      CHECK(comp.defined()) << "VsiNpu JSON runtime only supports composite functions.";
-      name = comp.value();
-
-      if (name == "vsi_npu.dense") {
-        call = GetRootCall(fn->body.as<CallNode>(), 1, {"nn.dense", "nn.bias_add"});
-        CHECK(call->op.as<OpNode>()) << "Not op node";
-      } else {
-        LOG(FATAL) << "Unrecognized VsiNpu pattern: " << name;
-      }
-    } else {
-      LOG(FATAL) << "VsiNpu JSON runtime does not support calls to " << cn->op->GetTypeKey();
-    }
-
-    std::vector<JSONGraphNodeEntry> inputs;
-    for (const auto& arg : cn->args) {
-      auto res = VisitExpr(arg);
-      inputs.insert(inputs.end(), res.begin(), res.end());
-    }
-    auto node = std::make_shared<JSONGraphNode>(name,     /* name_ */
-                                                "kernel", /* op_type_ */
-                                                inputs, 1 /* num_outputs_ */);
-    SetCallNodeAttribute(node, call);
-    return AddNode(node, GetRef<Expr>(cn));
-#else
     if (cn->op.as<OpNode>()) {
       return JSONSerializer::VisitExpr_(cn);
     }
@@ -158,16 +135,16 @@ class VsiNpuJSONSerializer : public backend::contrib::JSONSerializer {
     } else if (name == "vsi_npu.qnn_sigmoid") {
       json_node = CreateCompositeQnnSigmoidJSONNode(cn);
     } else if (name == "vsi_npu.qnn_avg_pool2d") {
-      json_node = CreateCompositeAvgPool2DJSONNode(cn);
+      json_node = CreateCompositeQnnPool2DJSONNode(cn);
+    } else if (name == "vsi_npu.max_pool2d" || name == "vsi_npu.avg_pool2d") {
+      json_node = CreateCompositePool2DJSONNode(cn);
     } else {
       LOG(FATAL) << "Unrecognized VSI NPU pattern: " << name;
     }
     return AddNode(json_node, GetRef<Expr>(cn));
-
-#endif
   }
  private:
-  std::shared_ptr<JSONGraphNode> CreateCompositeAvgPool2DJSONNode(const CallNode* cn) {
+  std::shared_ptr<JSONGraphNode> CreateCompositeQnnPool2DJSONNode(const CallNode* cn) {
     CompositeQnnAvgPool2DNode nodes = UnpackCompositeQnnAvgPool2D(cn);
     std::string name = "qnn.avg_pool2d";
 
@@ -177,6 +154,35 @@ class VsiNpuJSONSerializer : public backend::contrib::JSONSerializer {
 
     auto json_node = std::make_shared<JSONGraphNode>(name, "kernel", inputs, 1);
     SetCallNodeAttribute(json_node, nodes.avg_pool2d);
+    return json_node;
+  }
+
+  std::shared_ptr<JSONGraphNode> CreateCompositePool2DJSONNode(const CallNode* cn) {
+    CompositePool2DNode nodes = UnpackCompositePool2D(cn);
+
+    // Inputs must be added in the same order they appear in the relay graph.
+    std::vector<JSONGraphNodeEntry> inputs;
+    inputs.push_back(VisitExpr(cn->args[0])[0]);
+
+    auto json_node = std::make_shared<JSONGraphNode>(nodes.name, "kernel", inputs, 1);
+    SetCallNodeAttribute(json_node, nodes.pool2d);
+
+    // Override attributes
+    if (nodes.pad) {
+      const auto* pad_attr = nodes.pad->attrs.as<PadAttrs>();
+      CHECK(pad_attr);
+      auto p = pad_attr->pad_width;
+      // Convert to TVM layout for now, conversion to VSI layout takes place in runtime.
+      // Standard convolution pad layout for TVM: top, left, bottom, right.
+      std::vector<std::string> padding = {std::to_string(p[2][0].as<IntImmNode>()->value),
+                                          std::to_string(p[3][0].as<IntImmNode>()->value),
+                                          std::to_string(p[2][1].as<IntImmNode>()->value),
+                                          std::to_string(p[3][1].as<IntImmNode>()->value)};
+      std::vector<dmlc::any> padding_attr;
+      padding_attr.emplace_back(padding);
+      json_node->SetAttr("padding", padding_attr);
+    }
+
     return json_node;
   }
 
@@ -292,10 +298,10 @@ class VsiNpuJSONSerializer : public backend::contrib::JSONSerializer {
       auto p = pad_attr->pad_width;
       // Convert to TVM layout for now, conversion to VSI layout takes place in runtime.
       // Standard convolution pad layout for TVM: top, left, bottom, right.
-      std::vector<std::string> padding = {std::to_string(p[1][0].as<IntImmNode>()->value),
-                                          std::to_string(p[2][0].as<IntImmNode>()->value),
-                                          std::to_string(p[1][1].as<IntImmNode>()->value),
-                                          std::to_string(p[2][1].as<IntImmNode>()->value)};
+      std::vector<std::string> padding = {std::to_string(p[2][0].as<IntImmNode>()->value),
+                                          std::to_string(p[3][0].as<IntImmNode>()->value),
+                                          std::to_string(p[2][1].as<IntImmNode>()->value),
+                                          std::to_string(p[3][1].as<IntImmNode>()->value)};
       std::vector<dmlc::any> padding_attr;
       padding_attr.emplace_back(padding);
       json_node->SetAttr("padding", padding_attr);
@@ -326,6 +332,37 @@ class VsiNpuJSONSerializer : public backend::contrib::JSONSerializer {
     nodes.pre_cast = current_call;
     return nodes;
   }
+
+  /*!
+   * \brief Extract nn.avg_pool2d/nn.max_pool2d nodes from a composite function.
+   *
+   * \param cn The call node of the composite function.
+   * \return Extracted composite convolution nodes.
+   */
+  static CompositePool2DNode UnpackCompositePool2D(const CallNode* cn) {
+    CompositePool2DNode nodes{};
+    const auto* fn = cn->op.as<FunctionNode>();
+    CHECK(fn);
+    // Traverse composite dense function from child to parent
+    const auto* current_call = fn->body.as<CallNode>();
+    if (backend::IsOp(current_call, "nn.avg_pool2d")) {
+        nodes.name = "nn.avg_pool2d";
+    } else if (backend::IsOp(current_call, "nn.max_pool2d")) {
+        nodes.name = "nn.max_pool2d";
+    } else {
+        CHECK(0) << "Invalid pool2d type";
+    }
+    nodes.pool2d = current_call;
+    if (!current_call->args.empty() && current_call->args[0]->IsInstance<CallNode>()) {
+      current_call = current_call->args[0].as<CallNode>();
+      if (backend::IsOp(current_call, "nn.pad")) {
+        nodes.pad = current_call;
+      }
+    }
+
+    return nodes;
+  }
+
 
   /*!
    * \brief Extract qnn.softmax nodes from a composite function.

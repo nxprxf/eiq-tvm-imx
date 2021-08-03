@@ -160,6 +160,7 @@ class VsiNpuJSONRuntime : public JSONRuntimeBase {
         }
       }
     }
+    LOG(INFO) << "Build graph Start" << std::endl;
     assert(graph_->Compile());
     LOG(INFO) << "Build graph successfully" << std::endl;
   }
@@ -631,7 +632,6 @@ class VsiNpuJSONRuntime : public JSONRuntimeBase {
 
     std::shared_ptr<tim::vx::Tensor> vsi_input;
     std::shared_ptr<tim::vx::Tensor> vsi_output;
-    std::cout << "inputs.size" << inputs.size() << std::endl;
     CHECK(inputs.size() == 1U || inputs.size() == 5U)
           << "Softmax requires 5 inputs with quantization, 1 inputs without.";
     if (inputs.size() == 5) {
@@ -719,9 +719,8 @@ class VsiNpuJSONRuntime : public JSONRuntimeBase {
     std::vector<std::string> pad = node.GetAttr<std::vector<std::string>>("padding");
     std::vector<std::string> strides = node.GetAttr<std::vector<std::string>>("strides");
     std::vector<std::string> dilation = node.GetAttr<std::vector<std::string>>("dilation");
-
     int groups = std::stoi(node.GetAttr<std::vector<std::string>>("groups")[0]);
-    int channels = std::stoi(node.GetAttr<std::vector<std::string>>("channels")[0]);
+    std::string str_channels = node.GetAttr<std::vector<std::string>>("channels")[0];
 
     // Collect inputs and outputs, handling both nn.conv2d and qnn.conv2d cases.
     std::vector<JSONGraphNodeEntry> inputs = node.GetInputs();
@@ -732,7 +731,19 @@ class VsiNpuJSONRuntime : public JSONRuntimeBase {
     bool has_bias;
     std::vector<int64_t> data_shape = nodes_[inputs[0].id_].GetOpShape()[0];
     std::vector<int64_t> weight_shape = nodes_[inputs[1].id_].GetOpShape()[0];
-    std::vector<int64_t> bias_shape = {channels};
+    int channels = 0;
+    if (str_channels == "") {
+      channels = data_shape[1];
+    } else {
+      channels = std::stoi(node.GetAttr<std::vector<std::string>>("channels")[0]);
+    }
+    std::vector<int64_t> bias_shape;
+    if (node.GetOpName() == "qnn.conv2d") {
+        bias_shape = nodes_[inputs[6].id_].GetOpShape()[0];
+    } else {
+        bias_shape = nodes_[inputs[2].id_].GetOpShape()[0];
+    }
+    bias_shape = {bias_shape[0] * bias_shape[1] * bias_shape[2] * bias_shape[3]};
     bool is_depthwise_conv = (groups == channels);
 
 

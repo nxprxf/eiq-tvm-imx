@@ -17,11 +17,46 @@
 import tvm
 from tvm import te
 import tvm.relay as relay
+from tvm import rpc
+from tvm.contrib import graph_runtime
+
 import tensorflow.keras as keras
 import numpy as np
 from tvm.contrib.download import download_testdata
 from PIL import Image
 from tflite_models import *
+
+RPC_HOST = "10.193.20.195"
+RPC_PORT = 9090
+MEASURE_PERF = False
+def inference_remotely(input_name, lib_path, image_data):
+    remote = rpc.connect(RPC_HOST, RPC_PORT)
+    remote.upload(lib_path)
+    lib = remote.load_module(os.path.basename(lib_path))
+    ctx = remote.cpu()
+
+    #intrp = relay.build_module.create_executor(
+    #                "graph", lib, ctx, target
+    #            )
+    #tvm_output = intrp.evaluate()(input_data, **params).asnumpy()
+
+
+    # Create a runtime executor module
+    module = graph_runtime.GraphModule(lib["default"](ctx))
+    # Feed input data
+    module.set_input(input_name, tvm.nd.array(image_data))
+
+    if MEASURE_PERF:
+        print("Evaluate graph runtime inference cost on VSI NPU")
+        ftimer = module.module.time_evaluator("run", ctx, number=1, repeat=10)
+        # Measure in millisecond.
+        prof_res = np.array(ftimer().results) * 1000
+        print("VSI NPU runtime inference time (std dev): %.2f ms (%.2f ms)"
+              % (np.mean(prof_res), np.std(prof_res)))
+    module.run()
+    tvm_output = module.get_output(0).asnumpy()
+
+    return tvm_output
 
 
 def load_keras_model(weights_url, model_name, weights_file):
@@ -46,7 +81,7 @@ def load_keras_model(weights_url, model_name, weights_file):
     shape_dict = {input_name: (1, c, h, w)}
 
     # the shape needs to be NCHW
-    return relay.frontend.from_keras(model, shape_dict)
+    return relay.frontend.from_keras(model, shape_dict), input_name
 
 
 if tuple(keras.__version__.split(".")) < ("2", "4", "0"):
@@ -66,19 +101,19 @@ else:
     )
     weights_file = "resnet50_keras_new.h5"
 
-mod, params = load_keras_model(weights_url, "ResNet50", weights_file)
+(mod, params), input_name = load_keras_model(weights_url, "ResNet50", weights_file)
 
 img = load_test_image()
 data = np.array(img)[np.newaxis, :].astype("float32")
 data = keras.applications.resnet50.preprocess_input(data)
 data = data.transpose([0, 3, 1, 2])
 
-tvm_out = run_tvm_model(mod, params, data)
-top1_tvm = np.argmax(tvm_out[0])
-print("ref out: ", top1_tvm)
 
 LIB_PATH = "./model.so"
 cross_compile_model(mod, params, lib_path=LIB_PATH)
-vsi_out = inference_remotely(mod, LIB_PATH, data)
+vsi_out = inference_remotely(input_name, LIB_PATH, data)
 print("vsi out: ", np.argmax(vsi_out))
 
+tvm_out = run_tvm_model(mod, params, data)
+top1_tvm = np.argmax(tvm_out[0])
+print("ref out: ", top1_tvm)

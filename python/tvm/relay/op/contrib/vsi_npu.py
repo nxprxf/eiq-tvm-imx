@@ -68,7 +68,6 @@ _register_external_op_helper("nn.batch_flatten")
 _register_external_op_helper("nn.relu")
 _register_external_op_helper("nn.softmax")
 _register_external_op_helper("nn.avg_pool2d")
-_register_external_op_helper("nn.max_pool2d")
 _register_external_op_helper("nn.global_avg_pool2d")
 _register_external_op_helper("nn.global_max_pool2d")
 _register_external_op_helper("nn.batch_norm")
@@ -167,6 +166,11 @@ def vsi_npu_pattern_table():
         pattern = is_op("cast")(pattern)
         return pattern
 
+    def max_pool2d_pattern():
+        pattern = is_op("nn.pad")(wildcard()) | wildcard()
+        pattern = is_op("nn.max_pool2d")(pattern)
+        return pattern
+
     def qnn_softmax_pattern():
         pattern = is_op("qnn.dequantize")(wildcard(), is_constant(), is_constant())
         pattern = is_op("nn.softmax")(pattern)
@@ -181,6 +185,7 @@ def vsi_npu_pattern_table():
 
     vsi_npu_patterns = [
             ("vsi_npu.dense", dense_pattern()),
+            ("vsi_npu.max_pool2d", max_pool2d_pattern()),
             ("vsi_npu.conv2d", conv_pattern()),
             ("vsi_npu.qnn_dense", qnn_dense_pattern()),
             ("vsi_npu.qnn_conv2d", qnn_conv_pattern()),
