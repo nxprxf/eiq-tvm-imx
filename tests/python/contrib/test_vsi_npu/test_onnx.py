@@ -27,7 +27,7 @@ from tvm.contrib.download import download_testdata
 from PIL import Image
 from tflite_models import *
 
-RPC_HOST = "10.193.20.195"
+RPC_HOST = ""
 RPC_PORT = 9090
 MEASURE_PERF = False
 def inference_remotely(input_name, lib_path, image_data):
@@ -96,6 +96,26 @@ model_url = "".join(
     ]
 )
 
+parser = argparse.ArgumentParser(description='VSI-NPU test script for ONNX models.')
+parser.add_argument('-i', '--ip', type=str, required=True,
+                    help='ip address for remote target board')
+parser.add_argument('-p', '--port', type=int, default=9090,
+                    help='port number for remote target board')
+parser.add_argument('-m', '--models', nargs='*', default=SUPPORTED_MODELS,
+                    help='models list to test')
+parser.add_argument('--perf', action='store_true',
+                    help='benchmark performance')
+parser.add_argument('--verbose', action='store_true',
+                    help='print more logs')
+
+args = parser.parse_args()
+
+RPC_HOST = args.ip
+RPC_PORT = args.port
+MEASURE_PERF = args.perf
+VERBOSE = args.verbose
+
+
 img = load_test_image()
 img_data = np.array(img).transpose(2, 0, 1)
 x = preprocess(img_data)
@@ -116,6 +136,6 @@ ref_output = softmax(ref_output)
 print("ref out: ", np.argmax(ref_output))
 
 LIB_PATH = "./model.so"
-cross_compile_model(mod, params, lib_path=LIB_PATH)
+cross_compile_model(mod, params, verbose=VERBOSE, lib_path=LIB_PATH)
 vsi_out = inference_remotely(input_name, LIB_PATH, x)
 print("vsi out: ", np.argmax(vsi_out))

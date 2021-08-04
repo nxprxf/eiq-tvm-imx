@@ -30,9 +30,10 @@ from PIL import Image
 from tflite_models import *
 
 
-RPC_HOST = "10.193.20.195"
+RPC_HOST = ""
 RPC_PORT = 9090
 MEASURE_PERF = False
+VERBOSE = False
 def inference_remotely(tfmodel, lib_path, image_data):
     remote = rpc.connect(RPC_HOST, RPC_PORT)
     remote.upload(lib_path)
@@ -124,7 +125,7 @@ def load_pytorch_model(model_name):
 # Compile the model
 def compile_pytorch_model(input_shape, model_name):
     mod, params = load_pytorch_model(model_name)
-    cross_compile_model(mod, params)
+    cross_compile_model(mod, params, verbose=VERBOSE)
 
     return mod, params
 
@@ -170,6 +171,24 @@ models = [
 #          "shufflenet_v2_x0_5",
 #          "shufflenet_v2_x1_0",
          ]
+parser = argparse.ArgumentParser(description='VSI-NPU test script for pytorch models.')
+parser.add_argument('-i', '--ip', type=str, required=True,
+                    help='ip address for remote target board')
+parser.add_argument('-p', '--port', type=int, default=9090,
+                    help='port number for remote target board')
+parser.add_argument('-m', '--models', nargs='*', default=SUPPORTED_MODELS,
+                    help='models list to test')
+parser.add_argument('--perf', action='store_true',
+                    help='benchmark performance')
+parser.add_argument('--verbose', action='store_true',
+                    help='print more logs')
+
+args = parser.parse_args()
+
+RPC_HOST = args.ip
+RPC_PORT = args.port
+MEASURE_PERF = args.perf
+VERBOSE = args.verbose
 
 
 SUPPORTED_MODELS = {}
