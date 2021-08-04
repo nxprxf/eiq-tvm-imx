@@ -227,6 +227,6 @@ for name, m in SUPPORTED_MODELS.items():
     vsi_out = inference_remotely(mod, LIB_PATH, image_data)
     top1_vsi = np.argmax(vsi_out)
 
-    print(f"Relay top-1 id: {top1_vsi}, class name: {labels[top1_vsi]}")
-    print(f"Relay top-1 id: {top1_tvm}, class name: {labels[top1_tvm]}")
-    print(f"Torch top-1 id: {top1_torch}, class name: {labels[top1_torch]}")
+    print(f"vsi out: {top1_vsi}, class name: {labels[top1_vsi]}")
+    print(f"ref out: {top1_tvm}, class name: {labels[top1_tvm]}")
+    print(f"Torch runtime: {top1_torch}, class name: {labels[top1_torch]}")
