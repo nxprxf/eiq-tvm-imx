@@ -30,7 +30,7 @@ from PIL import Image
 from tflite_models import *
 
 
-RPC_HOST = "10.193.21.234"
+RPC_HOST = "10.193.20.195"
 RPC_PORT = 9090
 MEASURE_PERF = False
 def inference_remotely(tfmodel, lib_path, image_data):
@@ -158,7 +158,7 @@ models = [
           "resnet101",
           "resnet152",
           "inception_v3",
-          "alexnet",
+#          "alexnet",
           "densenet121",
           "densenet161",
           "densenet169",
@@ -167,8 +167,8 @@ models = [
           "squeezenet1_1",
           "mnasnet0_5",
           "mnasnet1_0",
-          "shufflenet_v2_x0_5",
-          "shufflenet_v2_x1_0",
+#          "shufflenet_v2_x0_5",
+#          "shufflenet_v2_x1_0",
          ]
 
 
