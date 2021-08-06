@@ -261,7 +261,8 @@ class VsiNpuJSONRuntime : public JSONRuntimeBase {
     }
 
     auto weight_tensor = vsi_inputs[1];
-    auto fc = graph_->CreateOperation<tim::vx::ops::FullyConnected>(1, weight_tensor->GetShape()[1]);
+    uint32_t axis = vsi_inputs[0]->GetShape().size() - vsi_outputs[0]->GetShape().size();
+    auto fc = graph_->CreateOperation<tim::vx::ops::FullyConnected>(axis, weight_tensor->GetShape()[1]);
     (*fc).BindInputs(vsi_inputs).BindOutputs(vsi_outputs);
     ops_.push_back(fc);
   }
@@ -744,7 +745,18 @@ class VsiNpuJSONRuntime : public JSONRuntimeBase {
         bias_shape = nodes_[inputs[2].id_].GetOpShape()[0];
     }
     bias_shape = {bias_shape[0] * bias_shape[1] * bias_shape[2] * bias_shape[3]};
-    bool is_depthwise_conv = (groups == channels);
+    bool is_depthwise_conv = (groups == channels or groups == data_shape[1]);
+
+    int32_t vsi_multiplier = 1;
+    if (groups == data_shape[1] && groups == weight_shape[0] && groups != 1) {
+      vsi_multiplier = static_cast<int32_t>(weight_shape[1]);
+      if (channels != vsi_multiplier) {
+          CHECK(channels == weight_shape[0] * weight_shape[1]) << "Invalid channels for depthwise conv2d.";
+          weight_shape[0] = 1;
+          weight_shape[1] = channels;
+      }
+    }
+
 
 
     if (node.GetOpName() == "qnn.conv2d") {
@@ -797,7 +809,7 @@ class VsiNpuJSONRuntime : public JSONRuntimeBase {
     int32_t arrt_weights = is_depthwise_conv ? weight_tensor->GetShape()[2] : weight_tensor->GetShape()[3];
     auto conv = graph_->CreateOperation<tim::vx::ops::Conv2d>(arrt_weights,
 		    tim::vx::PadType::AUTO, vsi_ksize, vsi_strides, vsi_dilation,
-		    vsi_pad, is_depthwise_conv ? 1 : 0);
+		    vsi_pad, is_depthwise_conv ? vsi_multiplier : 0);
     (*conv).BindInputs(vsi_inputs).BindOutputs(vsi_outputs);
     ops_.push_back(conv);
   }
