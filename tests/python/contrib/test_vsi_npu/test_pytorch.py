@@ -159,7 +159,7 @@ models = [
           "resnet101",
           "resnet152",
           "inception_v3",
-#          "alexnet",
+          "alexnet",
           "densenet121",
           "densenet161",
           "densenet169",
