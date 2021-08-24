@@ -730,21 +730,16 @@ class VsiNpuJSONRuntime : public JSONRuntimeBase {
     size_t num_inputs = inputs.size();
     JSONGraphNodeEntry out_entry(nid, 0);
     bool has_bias;
+    std::vector<int64_t> bias_shape;
     std::vector<int64_t> data_shape = nodes_[inputs[0].id_].GetOpShape()[0];
     std::vector<int64_t> weight_shape = nodes_[inputs[1].id_].GetOpShape()[0];
+
     int channels = 0;
     if (str_channels == "") {
       channels = data_shape[1];
     } else {
       channels = std::stoi(node.GetAttr<std::vector<std::string>>("channels")[0]);
     }
-    std::vector<int64_t> bias_shape;
-    if (node.GetOpName() == "qnn.conv2d") {
-        bias_shape = nodes_[inputs[6].id_].GetOpShape()[0];
-    } else {
-        bias_shape = nodes_[inputs[2].id_].GetOpShape()[0];
-    }
-    bias_shape = {bias_shape[0] * bias_shape[1] * bias_shape[2] * bias_shape[3]};
     bool is_depthwise_conv = (groups == channels or groups == data_shape[1]);
 
     int32_t vsi_multiplier = 1;
@@ -757,8 +752,6 @@ class VsiNpuJSONRuntime : public JSONRuntimeBase {
       }
     }
 
-
-
     if (node.GetOpName() == "qnn.conv2d") {
       CHECK(num_inputs >= 10U && num_inputs <= 11U)
           << "Quantized convolution requires 11 inputs with a bias, 9 inputs without.";
@@ -766,6 +759,8 @@ class VsiNpuJSONRuntime : public JSONRuntimeBase {
       vsi_inputs.push_back(MakeVSITensorFromJSONEntry(inputs[0], &inputs[4], &inputs[2]));
       vsi_inputs.push_back(MakeVSITensorFromJSONEntry(inputs[1], &inputs[5], &inputs[3], &weight_shape));
       if (has_bias) {
+        bias_shape = nodes_[inputs[6].id_].GetOpShape()[0];
+        bias_shape = {bias_shape[0] * bias_shape[1] * bias_shape[2] * bias_shape[3]};
         vsi_inputs.push_back(MakeVSITensorFromJSONEntry(inputs[6], &inputs[9], &inputs[10], &bias_shape));
       }
       vsi_outputs.push_back(MakeVSITensorFromJSONEntry(out_entry, &inputs[6 + has_bias], &inputs[7 + has_bias]));
@@ -776,6 +771,8 @@ class VsiNpuJSONRuntime : public JSONRuntimeBase {
       vsi_inputs.push_back(MakeVSITensorFromJSONEntry(inputs[0]));
       vsi_inputs.push_back(MakeVSITensorFromJSONEntry(inputs[1], nullptr, nullptr, &weight_shape));
       if (has_bias) {
+        bias_shape = nodes_[inputs[2].id_].GetOpShape()[0];
+        bias_shape = {bias_shape[0] * bias_shape[1] * bias_shape[2] * bias_shape[3]};
         vsi_inputs.push_back(MakeVSITensorFromJSONEntry(inputs[2], nullptr, nullptr, &bias_shape));
       }
       vsi_outputs.push_back(MakeVSITensorFromJSONEntry(out_entry));
