@@ -50,7 +50,10 @@ def inference_remotely(tfmodel, lib_path, image_data):
         print("VSI NPU runtime inference time (std dev): %.2f ms (%.2f ms)"
               % (np.mean(prof_res), np.std(prof_res)))
     module.run()
-    tvm_output = module.get_output(0).asnumpy()
+    num_outputs = module.get_num_outputs()
+    tvm_output = []
+    for i in range(num_outputs):
+        tvm_output.append(module.get_output(i).asnumpy())
 
     return tvm_output
 
@@ -83,9 +86,20 @@ def get_ref_result(shape, model_name, image_data):
               % (np.mean(prof_res), np.std(prof_res)))
 
     cpu_mod.run()
-    ref_out = cpu_mod.get_output(0).asnumpy()
+    num_outputs = cpu_mod.get_num_outputs()
+    ref_out = []
+    for i in range(num_outputs):
+        ref_out.append(cpu_mod.get_output(i).asnumpy())
     return ref_out
 
+def ssd_iou(box1, box2):
+    in_h = min(box1[2], box2[2]) - max(box1[0], box2[0])
+    in_w = min(box1[3], box2[3]) - max(box1[1], box2[1])
+    inter = 0 if in_h<0 or in_w<0 else in_h*in_w
+    union = (box1[2] - box1[0]) * (box1[3] - box1[1]) + \
+            (box2[2] - box2[0]) * (box2[3] - box2[1]) - inter
+    iou = inter / union
+    return iou
 
 def verify_tvm_result(ref_output, shape, model_name, image_data):
 
@@ -94,8 +108,8 @@ def verify_tvm_result(ref_output, shape, model_name, image_data):
     tvm_output = inference_remotely(m, lib_path, image_data)
 
     if m.name.startswith('deeplabv3') and m.is_quant:
-        ref_output = ref_output.reshape(shape[1:3])
-        tvm_output = tvm_output.reshape(shape[1:3])
+        ref_output = ref_output[0].reshape(shape[1:3])
+        tvm_output = tvm_output[0].reshape(shape[1:3])
 
         pix_acc = pixel_accuracy(ref_output, tvm_output)
         print("pixel accuracy:", pix_acc)
@@ -106,13 +120,25 @@ def verify_tvm_result(ref_output, shape, model_name, image_data):
         freq_weighted_IU = frequency_weighted_IU(ref_output, tvm_output)
         print("frequency weighted IU:", freq_weighted_IU)
 
-    elif 'deeplabv3' in m.name or "ssd" in m.name:
+    elif 'deeplabv3' in m.name:
         # compare deeplabv3 float32 output
         np.testing.assert_allclose(ref_output, tvm_output,
                                    rtol=1e-4, atol=1e-4, verbose=True)
+    elif "ssd" in m.name:
+        ref_boxes = ref_output[0][0]
+        ref_classes = ref_output[1][0]
+        ref_number = ref_output[3][0]
+
+        tvm_boxes = tvm_output[0][0]
+        tvm_classes = tvm_output[1][0]
+        tvm_number = tvm_output[3][0]
+        for i in range(min(3, int(ref_number), int(tvm_number))):
+            assert int(ref_classes[i]) == int(tvm_classes[i])
+            iou = ssd_iou(ref_boxes[i], tvm_boxes[i])
+            assert iou > 0.9
     else:  # label index comparison
-        ref_idx = np.argmax(np.squeeze(ref_output))
-        out_idx = np.argmax(np.squeeze(tvm_output))
+        ref_idx = np.argmax(np.squeeze(ref_output[0]))
+        out_idx = np.argmax(np.squeeze(tvm_output[0]))
 
         print(f'Expect predict id: {ref_idx}, got {out_idx}')
         assert ref_idx == out_idx
