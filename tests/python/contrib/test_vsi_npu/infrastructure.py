@@ -85,7 +85,7 @@ def verify_vsi_result(mod, params, data_shape, out_shape, dtype="float32"):
 
     try:
         vsi_out = get_vsi_result(data, mod, params, out_shape, dtype)
-        tol = 1e-5
+        tol = 2e-4
         tvm.testing.assert_allclose(ref_out.asnumpy(), vsi_out.asnumpy(), rtol=tol, atol=tol)
 
     except Exception as err:
