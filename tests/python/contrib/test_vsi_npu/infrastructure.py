@@ -22,12 +22,10 @@ from tvm.relay.op.contrib import vsi_npu
 from tvm import rpc
 from tvm.contrib import util
 
-RPC_HOST = "10.193.20.8"
-RPC_PORT = 9090
 CROSS_CC = "aarch64-linux-gnu-gcc"
 
-def get_vsi_model(mod, params):
-    remote = rpc.connect(RPC_HOST, RPC_PORT)
+def get_vsi_model(mod, params, ip, port, use_cpu):
+    remote = rpc.connect(ip, port)
     tmp_path = util.tempdir()
     lib_name = "model.so"
     lib_path = tmp_path.relpath(lib_name)
@@ -36,7 +34,8 @@ def get_vsi_model(mod, params):
     kwargs["cc"] = CROSS_CC
     target = "llvm  -mtriple=aarch64-linux-gnu"
     with tvm.transform.PassContext(opt_level=3, disabled_pass=["AlterOpLayout"]):
-        mod = vsi_npu.partition_for_vsi_npu(mod, params)
+        if (use_cpu == False):
+            mod = vsi_npu.partition_for_vsi_npu(mod, params)
         lib  = relay.build(mod, target, params=params)
         lib.export_library(lib_path, fcompile=False, **kwargs)
 
@@ -47,8 +46,8 @@ def get_vsi_model(mod, params):
     rt_mod = graph_runtime.GraphModule(lib["default"](ctx))
     return rt_mod, ctx
 
-def get_vsi_result(data, mod, params, out_shape, dtype):
-    rt_mod, ctx = get_vsi_model(mod, params)
+def get_vsi_result(data, mod, params, out_shape, dtype, ip, port, use_cpu):
+    rt_mod, ctx = get_vsi_model(mod, params, ip, port, use_cpu)
     rt_mod.set_input("data", data)
     rt_mod.run()
     rt_out = tvm.nd.array(np.zeros(out_shape, dtype=dtype), ctx)
@@ -78,13 +77,13 @@ def get_ref_result(data, mod, params, out_shape, dtype):
     cpu_out = cpu_mod.get_output(0, tvm.nd.empty(out_shape, dtype))
     return cpu_out
 
-def verify_vsi_result(mod, params, data_shape, out_shape, dtype="float32"):
+def verify_vsi_result(mod, params, data_shape, out_shape, dtype="float32", ip="", port=9090, use_cpu=False):
     data = np.random.uniform(size=data_shape).astype(dtype)
 
     ref_out = get_ref_result(data, mod, params, out_shape, dtype)
 
     try:
-        vsi_out = get_vsi_result(data, mod, params, out_shape, dtype)
+        vsi_out = get_vsi_result(data, mod, params, out_shape, dtype, ip, port, use_cpu)
         tol = 2e-4
         tvm.testing.assert_allclose(ref_out.asnumpy(), vsi_out.asnumpy(), rtol=tol, atol=tol)
 

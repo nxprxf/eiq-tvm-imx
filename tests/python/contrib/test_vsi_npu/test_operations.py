@@ -19,7 +19,19 @@ from tvm import relay
 from tvm.relay import testing
 import numpy as np
 from infrastructure import verify_vsi_result
+import argparse
 
+parser = argparse.ArgumentParser(description='VSI-NPU test script for tflite models.')
+parser.add_argument('-i', '--ip', type=str, required=True,
+                    help='ip address for remote target board')
+parser.add_argument('-p', '--port', type=int, default=9090,
+                    help='port number for remote target board')
+parser.add_argument('--cpu', action='store_true',
+                    help='use cpu instead of npu or gpu')
+args = parser.parse_args()
+
+def verify_op_result(mod, params, data_shape, out_shape, dtype):
+    return verify_vsi_result(mod, params, data_shape, out_shape, dtype, args.ip, args.port, args.cpu)
 
 def _single_operation_test(relay_nn_func, dtype, data_shape, out_shape,
         *args, **kargs):
@@ -34,7 +46,7 @@ def _single_operation_test(relay_nn_func, dtype, data_shape, out_shape,
 
     mod, params = relay.testing.init.create_workload(net)
 
-    verify_vsi_result(mod, params, data_shape, out_shape, dtype)
+    verify_op_result(mod, params, data_shape, out_shape, dtype)
 
 def test_global_avg_pool2d():
     func = relay.nn.global_avg_pool2d
@@ -108,7 +120,7 @@ def test_add():
 
     print("Testing {0: <50}".format("ADD"), end="")
     mod, params = get_workload(data_shape, dtype)
-    verify_vsi_result(mod, params, data_shape, out_shape, dtype)
+    verify_op_result(mod, params, data_shape, out_shape, dtype)
 
 
 def test_batch_flatten():
@@ -144,7 +156,7 @@ def test_batch_norm():
 
     print("Testing {0: <50}".format("BATCH_NORM"), end="")
     mod, params = get_workload(data_shape, c_shape, dtype)
-    verify_vsi_result(mod, params, data_shape, out_shape, dtype)
+    verify_op_result(mod, params, data_shape, out_shape, dtype)
 
 def test_conv2d():
     data_shape = (1, 256, 64, 64)
@@ -178,7 +190,7 @@ def test_conv2d():
 
     print("Testing {0: <50}".format("CONV2D"), end="")
     mod, params = get_workload(data_shape, weight_shape, dtype)
-    verify_vsi_result(mod, params, data_shape, out_shape, dtype)
+    verify_op_result(mod, params, data_shape, out_shape, dtype)
 
 
 def test_dense():
@@ -198,7 +210,7 @@ def test_dense():
 
     print("Testing {0: <50}".format("DENSE_BIAS_ADD"), end="")
     mod, params = get_workload(data_shape, weight_shape, dtype)
-    verify_vsi_result(mod, params, data_shape, out_shape, dtype)
+    verify_op_result(mod, params, data_shape, out_shape, dtype)
 
 def test_concatenate():
     dtype = "float32"
@@ -220,7 +232,7 @@ def test_concatenate():
 
     print("Testing {0: <50}".format("CONCATENATE"), end="")
     mod, params = get_workload(data_shape, dtype)
-    verify_vsi_result(mod, params, data_shape, out_shape, dtype)
+    verify_op_result(mod, params, data_shape, out_shape, dtype)
 
 def test_image_resize():
     data_dtype = 'float32'
@@ -241,7 +253,7 @@ def test_image_resize():
         net = relay.Function(args, out)
 
         mod, params = relay.testing.init.create_workload(net)
-        verify_vsi_result(mod, params, data_shape, out_shape, data_dtype)
+        verify_op_result(mod, params, data_shape, out_shape, data_dtype)
     print("Testing {0: <50}".format("RESIZE_1"), end="")
     run_test("NHWC", "nearest_neighbor", "asymmetric")
     print("Testing {0: <50}".format("RESIZE_2"), end="")
@@ -289,7 +301,7 @@ def test_qnn_add():
 
     print("Testing {0: <50}".format("QNN.ADD"), end="")
     mod, params = relay.testing.init.create_workload(net)
-    verify_vsi_result(mod, params, data_shape, out_shape, data_dtype)
+    verify_op_result(mod, params, data_shape, out_shape, data_dtype)
 
 
 if __name__ == "__main__":

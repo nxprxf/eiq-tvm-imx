@@ -20,6 +20,7 @@ from tvm.relay import testing
 import numpy as np
 from infrastructure import verify_vsi_result
 import sys
+import argparse
 
 SUPPORTED_NETWORKS = {
    "mlp": relay.testing.mlp.get_workload,
@@ -32,9 +33,19 @@ SUPPORTED_NETWORKS = {
 }
 
 # get networks to run from cmdline. run all supported networks if no.
-args = sys.argv[1:]
+parser = argparse.ArgumentParser(description='VSI-NPU test script for tflite models.')
+parser.add_argument('-i', '--ip', type=str, required=True,
+                    help='ip address for remote target board')
+parser.add_argument('-p', '--port', type=int, default=9090,
+                    help='port number for remote target board')
+parser.add_argument('-m', '--models', nargs='*', default=SUPPORTED_NETWORKS.keys(),
+                    help='models list to test')
+parser.add_argument('--cpu', action='store_true',
+                    help='use cpu instead of npu or gpu')
+args = parser.parse_args()
+
 models_to_run = {}
-for m in args:
+for m in args.models:
     if m not in SUPPORTED_NETWORKS.keys():
         print("Supported networks: {}".format(list(SUPPORTED_NETWORKS.keys())))
         sys.exit(1)
@@ -76,4 +87,4 @@ for nn, get_workload in models_to_run.items():
                                    image_shape=image_shape)
 
     print("\nTesting {0: <50}".format(nn.upper()))
-    verify_vsi_result(mod, params, data_shape, out_shape, dtype)
+    verify_vsi_result(mod, params, data_shape, out_shape, dtype, args.ip, args.port, args.cpu)

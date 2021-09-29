@@ -219,7 +219,7 @@ def get_img_data(shape, is_quant):
 
 
 def compile_tflite_model(shape, model_name, verbose=False,
-                         lib_path="./model.so"):
+                         lib_path="./model.so", use_cpu=False):
     m = SUPPORTED_MODELS[model_name]
 
     DTYPE = "uint8" if m.is_quant else "float32"
@@ -234,7 +234,8 @@ def compile_tflite_model(shape, model_name, verbose=False,
     kwargs["cc"] = "aarch64-linux-gnu-gcc"
     target = "llvm  -mtriple=aarch64-linux-gnu"
     with transform.PassContext(opt_level=3, disabled_pass=["AlterOpLayout"]):
-        mod = vsi_npu.partition_for_vsi_npu(mod, params)
+        if (use_cpu == False):
+            mod = vsi_npu.partition_for_vsi_npu(mod, params)
         if verbose:
             print(mod.astext(show_meta_data=False))
         lib = relay.build(mod, target, params=params)
@@ -277,13 +278,14 @@ def load_test_label(label_url=TEST_LABEL_INDEX):
     raise Exception("Load label index file failed!")
 
 
-def cross_compile_model(mod, params, verbose=False, lib_path="./model.so"):
+def cross_compile_model(mod, params, verbose=False, lib_path="./model.so", use_cpu=False):
     kwargs = {}
     kwargs["cc"] = "aarch64-linux-gnu-gcc"
     target = "llvm  -mtriple=aarch64-linux-gnu"
 
     with transform.PassContext(opt_level=3, disabled_pass=["AlterOpLayout"]):
-        mod = vsi_npu.partition_for_vsi_npu(mod, params)
+        if (use_cpu == False):
+            mod = vsi_npu.partition_for_vsi_npu(mod, params)
         if verbose:
             print(mod.astext(show_meta_data=False))
         lib = relay.build(mod, target, params=params)

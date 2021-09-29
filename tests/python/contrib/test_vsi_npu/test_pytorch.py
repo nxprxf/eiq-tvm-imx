@@ -34,6 +34,7 @@ RPC_HOST = ""
 RPC_PORT = 9090
 MEASURE_PERF = False
 VERBOSE = False
+USE_CPU = False
 def inference_remotely(tfmodel, lib_path, image_data):
     remote = rpc.connect(RPC_HOST, RPC_PORT)
     remote.upload(lib_path)
@@ -125,7 +126,7 @@ def load_pytorch_model(model_name):
 # Compile the model
 def compile_pytorch_model(input_shape, model_name):
     mod, params = load_pytorch_model(model_name)
-    cross_compile_model(mod, params, verbose=VERBOSE)
+    cross_compile_model(mod, params, verbose=VERBOSE, use_cpu=USE_CPU)
 
     return mod, params
 
@@ -178,6 +179,8 @@ parser.add_argument('-p', '--port', type=int, default=9090,
                     help='port number for remote target board')
 parser.add_argument('-m', '--models', nargs='*', default=SUPPORTED_MODELS,
                     help='models list to test')
+parser.add_argument('--cpu', action='store_true',
+                    help='use cpu instead of npu or gpu')
 parser.add_argument('--perf', action='store_true',
                     help='benchmark performance')
 parser.add_argument('--verbose', action='store_true',
@@ -189,6 +192,7 @@ RPC_HOST = args.ip
 RPC_PORT = args.port
 MEASURE_PERF = args.perf
 VERBOSE = args.verbose
+USE_CPU = args.cpu
 
 
 SUPPORTED_MODELS = {}

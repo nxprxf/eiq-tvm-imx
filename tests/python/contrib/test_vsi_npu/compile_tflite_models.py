@@ -26,6 +26,8 @@ parser.add_argument('-m', '--models', nargs='*', default=SUPPORTED_MODELS,
                     help='models list to test')
 parser.add_argument('dir', type=str,
                     help='destination directory')
+parser.add_argument('--cpu', action='store_true',
+                    help='use cpu instead of npu or gpu')
 parser.add_argument('--verbos', action='store_true',
                     help='print more logs')
 
@@ -53,4 +55,4 @@ for model_name, m in models_to_run.items():
 
     shape = (1, input_size, input_size, 3)
     target_models = os.path.join(args.dir, model_name + '.so')
-    lib_path = compile_tflite_model(shape, model_name, args.verbos, target_models)
+    lib_path = compile_tflite_model(shape, model_name, args.verbos, target_models, args.cpu)

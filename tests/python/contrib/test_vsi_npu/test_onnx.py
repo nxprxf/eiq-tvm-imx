@@ -103,6 +103,8 @@ parser.add_argument('-p', '--port', type=int, default=9090,
                     help='port number for remote target board')
 parser.add_argument('-m', '--models', nargs='*', default=SUPPORTED_MODELS,
                     help='models list to test')
+parser.add_argument('--cpu', action='store_true',
+                    help='use cpu instead of npu or gpu')
 parser.add_argument('--perf', action='store_true',
                     help='benchmark performance')
 parser.add_argument('--verbose', action='store_true',
@@ -136,6 +138,6 @@ ref_output = softmax(ref_output)
 print("ref out: ", np.argmax(ref_output))
 
 LIB_PATH = "./model.so"
-cross_compile_model(mod, params, verbose=VERBOSE, lib_path=LIB_PATH)
+cross_compile_model(mod, params, verbose=VERBOSE, lib_path=LIB_PATH, use_cpu=args.cpu)
 vsi_out = inference_remotely(input_name, LIB_PATH, x)
 print("vsi out: ", np.argmax(vsi_out))

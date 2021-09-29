@@ -30,6 +30,7 @@ RPC_HOST = ""
 RPC_PORT = 9090
 MEASURE_PERF = False
 VERBOSE = False
+USE_CPU = False
 
 def inference_remotely(tfmodel, lib_path, image_data):
     remote = rpc.connect(RPC_HOST, RPC_PORT)
@@ -104,7 +105,7 @@ def ssd_iou(box1, box2):
 def verify_tvm_result(ref_output, shape, model_name, image_data):
 
     m = SUPPORTED_MODELS[model_name]
-    lib_path = compile_tflite_model(shape, model_name, VERBOSE)
+    lib_path = compile_tflite_model(shape, model_name, VERBOSE, use_cpu=USE_CPU)
     tvm_output = inference_remotely(m, lib_path, image_data)
 
     if m.name.startswith('deeplabv3') and m.is_quant:
@@ -151,6 +152,8 @@ parser.add_argument('-p', '--port', type=int, default=9090,
                     help='port number for remote target board')
 parser.add_argument('-m', '--models', nargs='*', default=SUPPORTED_MODELS,
                     help='models list to test')
+parser.add_argument('--cpu', action='store_true',
+                    help='use cpu instead of npu or gpu')
 parser.add_argument('--perf', action='store_true',
                     help='benchmark performance')
 parser.add_argument('--verbose', action='store_true',
@@ -162,6 +165,7 @@ RPC_HOST = args.ip
 RPC_PORT = args.port
 MEASURE_PERF = args.perf
 VERBOSE = args.verbose
+USE_CPU = args.cpu
 
 init_supported_models()
 models_to_run = {}
