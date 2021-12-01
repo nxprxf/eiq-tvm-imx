@@ -62,6 +62,24 @@ def add_supported_model(name, where, is_quant=False, formats='tgz',
 
 def init_supported_models():
     QUANT = True
+    # the input size for inception_v3 model from tflite model zoo is 299
+    # https://discuss.tvm.apache.org/t/possible-bug-relay-internal-invariant-was-violdated/2105/8
+    where = "https://storage.googleapis.com/download.tensorflow.org/"
+    where += "models/tflite/model_zoo/upload_20180427"
+    m = add_supported_model("inception_v3", where, suffix="_2018_04_27")
+    m.input_size = 299
+    m = add_supported_model("inception_v4", where, suffix="_2018_04_27")
+    m.input_size = 299
+
+    where = "https://storage.googleapis.com/download.tensorflow.org/models"
+    add_supported_model("inception_v1_224", where, QUANT, suffix="_20181026")
+    add_supported_model("inception_v2_224", where, QUANT, suffix="_20181026")
+    add_supported_model("inception_v4_299", where, QUANT, suffix="_20181026")
+    where = "https://storage.googleapis.com/"
+    where += "download.tensorflow.org/models/tflite_11_05_08"
+    m = add_supported_model("inception_v3", where, QUANT)
+    m.input_size = 299
+
     where = "".join(
                ["https://storage.googleapis.com/tfhub-lite-models/tensorflow/",
                 "lite-model/ssd_mobilenet_v1/1/metadata/1.tflite"])
@@ -78,19 +96,11 @@ def init_supported_models():
     m.inputs = 'normalized_input_image_tensor'
 
     where = "http://download.tensorflow.org/models/mobilenet_v1_2018_08_02"
-    add_supported_model("mobilenet_v1_0.25_128", where, QUANT)
-    add_supported_model("mobilenet_v1_0.25_224", where, QUANT)
-    add_supported_model("mobilenet_v1_0.5_128", where, QUANT)
-    add_supported_model("mobilenet_v1_0.5_224", where, QUANT)
     add_supported_model("mobilenet_v1_0.75_128", where, QUANT)
     add_supported_model("mobilenet_v1_0.75_224", where, QUANT)
     add_supported_model("mobilenet_v1_1.0_128", where, QUANT)
     add_supported_model("mobilenet_v1_1.0_224", where, QUANT)
 
-    add_supported_model("mobilenet_v1_0.25_128", where)
-    add_supported_model("mobilenet_v1_0.25_224", where)
-    add_supported_model("mobilenet_v1_0.5_128", where)
-    add_supported_model("mobilenet_v1_0.5_224", where)
     add_supported_model("mobilenet_v1_0.75_128", where)
     add_supported_model("mobilenet_v1_0.75_224", where)
     add_supported_model("mobilenet_v1_1.0_128", where)
@@ -100,22 +110,6 @@ def init_supported_models():
     where += "download.tensorflow.org/models/tflite_11_05_08"
     add_supported_model("mobilenet_v2_1.0_224", where, QUANT)
     add_supported_model("mobilenet_v2_1.0_224", where)
-    # the input size for inception_v3 model from tflite model zoo is 299
-    # https://discuss.tvm.apache.org/t/possible-bug-relay-internal-invariant-was-violdated/2105/8
-    m = add_supported_model("inception_v3", where, QUANT)
-    m.input_size = 299
-
-    where = "https://storage.googleapis.com/download.tensorflow.org/models"
-    add_supported_model("inception_v1_224", where, QUANT, suffix="_20181026")
-    add_supported_model("inception_v2_224", where, QUANT, suffix="_20181026")
-    add_supported_model("inception_v4_299", where, QUANT, suffix="_20181026")
-
-    where = "https://storage.googleapis.com/download.tensorflow.org/"
-    where += "models/tflite/model_zoo/upload_20180427"
-    m = add_supported_model("inception_v3", where, suffix="_2018_04_27")
-    m.input_size = 299
-    m = add_supported_model("inception_v4", where, suffix="_2018_04_27")
-    m.input_size = 299
 
     where = "https://storage.googleapis.com/download.tensorflow.org/"
     where += "models/tflite/gpu"
